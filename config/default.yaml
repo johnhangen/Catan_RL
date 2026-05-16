@@ -1,0 +1,52 @@
+env:
+  map_type: BASE
+  vps_to_win: 10
+  representation: vector
+  reward_function: shaped      # sparse | vp_delta | shaped
+  num_players: 4
+  num_envs: 8
+
+training:
+  algorithm: MaskablePPO
+  total_timesteps: 3_500_000
+  learning_rate: 3.0e-4
+  n_steps: 2048
+  batch_size: 256
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  device: auto
+
+curriculum:
+  enabled: true
+  stages:
+    - name: random
+      timesteps: 500_000
+      graduate_winrate: 0.60
+    - name: weighted
+      timesteps: 1_000_000
+      graduate_winrate: 0.55
+    - name: selfplay
+      timesteps: 2_000_000
+      graduate_winrate: null
+  eval_freq: 50_000
+  eval_episodes: 100
+
+rewards:
+  win: 10.0
+  loss: -2.0
+  vp_delta_scale: 1.0
+  longest_road: 0.5
+  largest_army: 0.5
+  turn_penalty: -0.001
+
+logging:
+  run_dir: runs
+  tensorboard: true
+  wandb: false
+  checkpoint_freq: 100_000
+  keep_checkpoints: 5
