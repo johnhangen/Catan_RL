@@ -50,6 +50,7 @@ def main():
     parser.add_argument("--config", default="config/default.yaml", help="Path to YAML config")
     parser.add_argument("--resume", default=None, help="Path to checkpoint to resume from")
     parser.add_argument("--run-dir", default=None, help="Override run directory")
+    parser.add_argument("--stage", default=None, help="Override initial curriculum stage (e.g. weighted)")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -74,7 +75,7 @@ def main():
     curriculum = CurriculumManager()
     if curriculum_cfg.get("enabled", True):
         curriculum.build_from_config(curriculum_cfg)
-    initial_stage = curriculum.current_stage.name
+    initial_stage = args.stage or curriculum.current_stage.name
 
     # Build training envs
     n_envs = env_cfg.get("num_envs", 4)

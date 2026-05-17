@@ -61,6 +61,26 @@ python play_reallife.py --model runs/.../best_model.zip
 python play_reallife.py --model runs/.../best_model.zip --players 3   # 1 AI + 2 humans
 ```
 
+### Autoresearch (Karpathy-style overnight search)
+
+Claude proposes config changes, a short training probe runs, win rate is measured,
+and the change is kept or discarded — repeating overnight without human input.
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+python autoresearch.py                               # 20 experiments, 200k steps each
+python autoresearch.py --experiments 40 --probe-steps 300000 --eval-games 100
+```
+
+Results are logged to `runs/autoresearch/log.jsonl`. The best config is saved to
+`runs/autoresearch/best_config.yaml` and can be used directly for a full training run:
+
+```bash
+python train.py --config runs/autoresearch/best_config.yaml
+```
+
+Edit `program.md` to change the research goal, search space, or stopping criteria.
+
 The operator is prompted to enter dice rolls from the physical board so resource production stays in sync with the virtual state.
 
 ## Project Structure
@@ -70,11 +90,14 @@ Catan_RL/
 ├── train.py                    # Training entry point
 ├── evaluate.py                 # Benchmark a checkpoint
 ├── play_reallife.py            # Real-life mode entry point
+├── autoresearch.py             # Karpathy-style overnight hyperparameter search
+├── program.md                  # Research goal, search space, stopping criteria
 │
 ├── config/
 │   ├── default.yaml            # Full 3.5M-step curriculum run
 │   ├── selfplay.yaml           # Start directly at self-play stage
-│   └── fast_debug.yaml         # 500 steps, 1 env — for CI
+│   ├── fast_debug.yaml         # 500 steps, 1 env — for CI
+│   └── autoresearch_probe.yaml # Starting config for autoresearch probes
 │
 ├── envs/
 │   ├── make_env.py             # Environment factory + action mask helper
@@ -197,3 +220,4 @@ The AI plays as **Blue**. Human players are Red, Orange, and White (depending on
 | `torch` | Neural network backend |
 | `rich` | Terminal UI for real-life mode |
 | `tensorboard` | Training curve visualisation |
+| `anthropic` | Claude API client for autoresearch loop |

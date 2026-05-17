@@ -129,6 +129,7 @@ def main():
     parser.add_argument("--games", type=int, default=100, help="Number of games per opponent")
     parser.add_argument("--num-players", type=int, default=4, help="Total players (1 AI + rest)")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--json", action="store_true", help="Print JSON results to stdout (for autoresearch)")
     args = parser.parse_args()
 
     from sb3_contrib.ppo_mask import MaskablePPO
@@ -144,6 +145,10 @@ def main():
 
     console.print()
     print_results(all_stats)
+
+    if args.json:
+        import json as _json
+        print(_json.dumps(all_stats))
 
 
 if __name__ == "__main__":
