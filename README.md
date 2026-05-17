@@ -67,7 +67,7 @@ Claude proposes config changes, a short training probe runs, win rate is measure
 and the change is kept or discarded — repeating overnight without human input.
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+# Requires the claude CLI to be installed and authenticated (claude.ai/code)
 python autoresearch.py                               # 20 experiments, 200k steps each
 python autoresearch.py --experiments 40 --probe-steps 300000 --eval-games 100
 ```
@@ -220,4 +220,4 @@ The AI plays as **Blue**. Human players are Red, Orange, and White (depending on
 | `torch` | Neural network backend |
 | `rich` | Terminal UI for real-life mode |
 | `tensorboard` | Training curve visualisation |
-| `anthropic` | Claude API client for autoresearch loop |
+| `claude` CLI | Claude Code — drives the autoresearch loop |

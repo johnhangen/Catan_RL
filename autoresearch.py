@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """Karpathy-style autoresearch loop for Catan RL.
 
-Claude proposes config changes, a short training probe runs, win rate is measured,
-and the change is kept or discarded — overnight, without human input.
+Claude Code proposes config changes, a short training probe runs, win rate is
+measured, and the change is kept or discarded — overnight, without human input.
 
 Usage:
     python autoresearch.py
     python autoresearch.py --experiments 30 --probe-steps 200000 --eval-games 50
 
 Requirements:
-    pip install anthropic
-    ANTHROPIC_API_KEY must be set in the environment.
+    claude CLI must be installed and authenticated (claude.ai/code).
 """
 
-import anthropic
 import argparse
 import copy
 import json
@@ -25,8 +23,6 @@ import sys
 import time
 import yaml
 from pathlib import Path
-
-MODEL = "claude-sonnet-4-6"
 
 AUTORESEARCH_DIR = "runs/autoresearch"
 LOG_FILE = os.path.join(AUTORESEARCH_DIR, "log.jsonl")
@@ -123,33 +119,30 @@ def run_eval(model_path: str, n_games: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Claude interaction
+# Claude Code interaction
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = (
-    "You are an RL research assistant optimising a MaskablePPO agent to play "
-    "Settlers of Catan. Your only tool is editing a YAML config file. "
-    "Each experiment trains for a fixed number of steps; the metric is win rate "
-    "against WeightedRandomPlayer opponents in 4-player Catan. "
-    "Propose one clear, testable change per experiment. Reason from the history."
-)
-
-
-def build_user_message(program_md: str, current_config_str: str, history: list[dict]) -> str:
+def build_prompt(program_md: str, current_config_str: str, history: list[dict]) -> str:
     if not history:
         history_block = "No experiments yet — this is the first one."
     else:
         rows = []
         for e in history[-15:]:
-            tag = "KEPT ✓" if e["kept"] else "discarded"
+            tag = "KEPT" if e["kept"] else "discarded"
             rows.append(
                 f"Exp {e['exp']:>2} [{tag}]  win={e['win_rate']:.3f}  "
-                f"mean_vp={e.get('mean_vp', '?'):.1f}  "
+                f"mean_vp={e.get('mean_vp', 0):.1f}  "
                 f"— {e['reasoning'][:120]}"
             )
         history_block = "\n".join(rows)
 
     return f"""\
+You are an RL research assistant optimising a MaskablePPO agent to play Settlers
+of Catan. Your only tool is proposing changes to a YAML config file. Each
+experiment trains for a fixed number of steps; the metric is win rate against
+WeightedRandomPlayer opponents in 4-player Catan. Propose one clear, testable
+change per experiment. Reason from the history.
+
 <program>
 {program_md}
 </program>
@@ -169,25 +162,18 @@ Propose the next experiment. Your reply must contain:
 Do not truncate the config; include every field."""
 
 
-def ask_claude(client: anthropic.Anthropic, program_md: str, current_config_str: str, history: list) -> str:
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=2048,
-        system=[
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[
-            {
-                "role": "user",
-                "content": build_user_message(program_md, current_config_str, history),
-            }
-        ],
+def ask_claude(prompt: str) -> str:
+    """Run `claude -p` with prompt on stdin, return the response text."""
+    result = subprocess.run(
+        ["claude", "-p", "--output-format", "text"],
+        input=prompt,
+        capture_output=True,
+        text=True,
+        timeout=180,
     )
-    return response.content[0].text
+    if result.returncode != 0:
+        raise RuntimeError(f"claude CLI failed (rc={result.returncode}):\n{result.stderr[:2000]}")
+    return result.stdout.strip()
 
 
 def parse_reply(text: str) -> tuple[str, dict]:
@@ -223,12 +209,8 @@ def main():
         if not os.path.exists(path):
             sys.exit(f"Missing {label} — {path}")
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        sys.exit("ANTHROPIC_API_KEY not set")
-
     program_md = Path(PROGRAM_FILE).read_text()
     os.makedirs(AUTORESEARCH_DIR, exist_ok=True)
-    client = anthropic.Anthropic()
 
     # Load history if resuming
     history: list[dict] = []
@@ -261,10 +243,11 @@ def main():
         current_config_str = Path(PROBE_CONFIG).read_text()
 
         # --- Claude proposes a change ---
+        prompt = build_prompt(program_md, current_config_str, history)
         try:
-            reply = ask_claude(client, program_md, current_config_str, history)
-        except anthropic.APIError as e:
-            print(f"API error: {e}. Skipping experiment.")
+            reply = ask_claude(prompt)
+        except (RuntimeError, subprocess.TimeoutExpired) as e:
+            print(f"Claude failed: {e}. Skipping experiment.")
             continue
 
         print(f"\n[Claude]\n{reply[:700]}\n")
