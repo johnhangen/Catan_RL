@@ -1,3 +1,5 @@
+import os
+import warnings
 import numpy as np
 import gymnasium
 from catanatron.models.player import Color, RandomPlayer
@@ -21,11 +23,16 @@ def _build_opponents(stage: str, num_players: int, model_path: str = None):
         return [RandomPlayer(c) for c in colors]
     if stage == "weighted":
         return [WeightedRandomPlayer(c) for c in colors]
-    if stage == "selfplay" and model_path:
+    if stage == "selfplay":
+        if not model_path or not os.path.exists(model_path):
+            warnings.warn(
+                f"Self-play stage requested but model_path is missing or does not exist "
+                f"({model_path!r}); falling back to WeightedRandomPlayer."
+            )
+            return [WeightedRandomPlayer(c) for c in colors]
         from agents.policy_player import PolicyPlayer
         return [PolicyPlayer(color=c, model_path=model_path) for c in colors]
-    # Default fallback
-    return [WeightedRandomPlayer(c) for c in colors]
+    raise ValueError(f"Unknown curriculum stage: {stage!r}")
 
 
 def action_mask_fn(env: gymnasium.Env) -> np.ndarray:
@@ -74,5 +81,4 @@ def make_env(config: dict, rank: int = 0, model_path: str = None):
     )
     env = EpisodeStatsWrapper(env)
     env = ActionMasker(env, action_mask_fn)
-    env.reset(seed=rank * 1000)
     return env

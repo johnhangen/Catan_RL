@@ -113,13 +113,19 @@ def main():
         run_dir=run_dir,
         save_freq=log_cfg.get("checkpoint_freq", 100_000),
         keep=log_cfg.get("keep_checkpoints", 5),
+        win_rate_cb=win_rate_cb,
         verbose=1,
     )
 
     callbacks = [win_rate_cb, checkpoint_cb]
 
+    selfplay_path = os.path.join(run_dir, f"{SelfPlayCallback.SELFPLAY_FILENAME}.zip")
+
     if curriculum_cfg.get("enabled", True):
         def make_env_fn(stage: str, model_path: str = None):
+            # Self-play stage uses the fixed file SelfPlayCallback overwrites.
+            if stage == "selfplay" and model_path is None:
+                model_path = selfplay_path
             env = build_vec_env(config, stage=stage, n_envs=n_envs, model_path=model_path)
             return VecMonitor(env, info_keywords=("win", "vp"))
 
@@ -133,9 +139,13 @@ def main():
         )
         callbacks.append(curriculum_cb)
 
-    if initial_stage == "selfplay":
-        self_play_cb = SelfPlayCallback(run_dir=run_dir, update_freq=50_000, verbose=1)
-        callbacks.append(self_play_cb)
+    # SelfPlayCallback runs whenever self-play is reachable: either as the
+    # starting stage or as a later curriculum stage.
+    stage_names = {s.name for s in curriculum.stages}
+    if initial_stage == "selfplay" or "selfplay" in stage_names:
+        if initial_stage == "selfplay":
+            save_checkpoint(model, run_dir, SelfPlayCallback.SELFPLAY_FILENAME)
+        callbacks.append(SelfPlayCallback(run_dir=run_dir, update_freq=50_000, verbose=1))
 
     # Train
     print(f"\nStarting training: {total_timesteps:,} timesteps, {n_envs} envs")

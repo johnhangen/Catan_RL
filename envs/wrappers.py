@@ -1,7 +1,6 @@
-import threading
-from typing import Optional
 import gymnasium
 from catanatron.state_functions import get_actual_victory_points
+from envs.rewards import clear_reward_state
 
 
 class EpisodeStatsWrapper(gymnasium.Wrapper):
@@ -11,11 +10,18 @@ class EpisodeStatsWrapper(gymnasium.Wrapper):
         super().__init__(env)
         self._ep_reward = 0.0
         self._ep_length = 0
+        self._last_game_id = None
 
     def reset(self, **kwargs):
+        # Clear stale reward bookkeeping for the previous game before
+        # the env builds a new one (avoids unbounded dict growth on truncation).
+        if self._last_game_id is not None:
+            clear_reward_state(self._last_game_id)
         self._ep_reward = 0.0
         self._ep_length = 0
-        return self.env.reset(**kwargs)
+        out = self.env.reset(**kwargs)
+        self._last_game_id = id(self.env.unwrapped.game)
+        return out
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
@@ -37,33 +43,3 @@ class EpisodeStatsWrapper(gymnasium.Wrapper):
             info["win"] = int(winner == p0_color)
             info["vp"] = vp
         return obs, reward, terminated, truncated, info
-
-
-class SelfPlayOpponentWrapper(gymnasium.Wrapper):
-    """Hot-swaps the opponent model between episodes during self-play.
-
-    Call `update_opponent(model_path)` from a training callback to refresh
-    opponents without rebuilding the VecEnv.
-    """
-
-    def __init__(self, env: gymnasium.Env, model_path: Optional[str] = None):
-        super().__init__(env)
-        self._model_path = model_path
-        self._lock = threading.Lock()
-
-    def update_opponent(self, model_path: str) -> None:
-        with self._lock:
-            self._model_path = model_path
-
-    def reset(self, **kwargs):
-        with self._lock:
-            path = self._model_path
-        if path is not None:
-            from agents.policy_player import PolicyPlayer
-            u = self.env.unwrapped
-            p0_color = u.p0.color
-            colors = [p.color for p in u.game.state.players if p.color != p0_color]
-            new_enemies = [PolicyPlayer(color=c, model_path=path) for c in colors]
-            # Rebuild the unwrapped env config before next reset
-            u._enemies = new_enemies
-        return self.env.reset(**kwargs)

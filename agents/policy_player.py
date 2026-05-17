@@ -8,33 +8,41 @@ class PolicyPlayer(Player):
     """A trained SB3 MaskablePPO model acting as a Catanatron opponent.
 
     Used during self-play: pass instances as `config["enemies"]`.
-    The model is loaded lazily on first call so subprocess VecEnvs can
-    pickle this object before the model file exists.
+    Set `reload_on_reset=True` so the model is re-read from disk between
+    games — SelfPlayCallback overwrites the file with the latest weights.
     """
 
-    def __init__(self, color: Color, model_path: str, deterministic: bool = True):
+    def __init__(
+        self,
+        color: Color,
+        model_path: str,
+        deterministic: bool = True,
+        reload_on_reset: bool = True,
+    ):
         super().__init__(color, is_bot=True)
         self.model_path = model_path
         self.deterministic = deterministic
+        self.reload_on_reset = reload_on_reset
         self._model = None
         self._features = None
+        self._features_signature = None  # (num_players, map_type)
 
-    def _load(self, num_players: int = 4, map_type: str = "BASE"):
+    def _load(self, num_players: int, map_type: str = "BASE"):
         if self._model is None:
             from sb3_contrib.ppo_mask import MaskablePPO
             self._model = MaskablePPO.load(self.model_path)
-        if self._features is None:
+        sig = (num_players, map_type)
+        if self._features is None or self._features_signature != sig:
             self._features = get_feature_ordering(num_players, map_type)
+            self._features_signature = sig
 
     def decide(self, game, playable_actions):
         num_players = len(game.state.players)
         self._load(num_players=num_players)
 
-        # Build observation from this player's perspective
         sample = create_sample(game, self.color)
         obs = np.array([float(sample[f]) for f in self._features], dtype=np.float64)
 
-        # Build action mask
         valid_ints = list(map(to_action_space, playable_actions))
         mask = np.zeros(ACTION_SPACE_SIZE, dtype=bool)
         mask[valid_ints] = True
@@ -45,4 +53,7 @@ class PolicyPlayer(Player):
         return from_action_space(int(action_int), playable_actions)
 
     def reset_state(self):
-        pass
+        # Force model re-load on next decide() so self-play opponents
+        # pick up the latest weights from disk.
+        if self.reload_on_reset:
+            self._model = None

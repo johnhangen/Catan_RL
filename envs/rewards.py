@@ -17,6 +17,11 @@ def _clear(game_id: int) -> None:
     _prev_has_army.pop(game_id, None)
 
 
+def clear_reward_state(game_id: int) -> None:
+    """Public helper for wrappers to drop bookkeeping for a finished/abandoned game."""
+    _clear(game_id)
+
+
 def sparse_reward(game, p0_color) -> float:
     """Win=+1, Loss=-1, ongoing=0."""
     winner = game.winning_color()
